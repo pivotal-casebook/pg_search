@@ -3,10 +3,13 @@ require 'digest'
 module PgSearch
   class Configuration
     class Column
+      TIMESTAMP_FORMAT = "YYYYMMDDHH24MISS"
+
       attr_reader :weight, :association
 
       def initialize(column_name, weight, model, association = nil)
         @column_name = column_name.to_s
+        @column_type = model.columns.detect { |column| column.name == column_name.to_s }.instance_variable_get("@type") # Suppress .type warning
         @weight = weight
         @model = model
         @association = association
@@ -26,7 +29,12 @@ module PgSearch
                else
                  full_name
                end
-        "coalesce(#{name}, '')"
+        case @column_type
+        when :date, :datetime
+          "coalesce(to_char(#{name}, '#{TIMESTAMP_FORMAT}'), '')"
+        else
+          "coalesce(#{name}, '')"
+        end
       end
 
       def foreign?

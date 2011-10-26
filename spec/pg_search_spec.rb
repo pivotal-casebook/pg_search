@@ -7,6 +7,8 @@ describe "an ActiveRecord model which includes PgSearch" do
       t.string 'title'
       t.text 'content'
       t.integer 'importance'
+      t.date 'birthday'
+      t.datetime 'time'
     end
 
     model do
@@ -292,6 +294,58 @@ describe "an ActiveRecord model which includes PgSearch" do
         included = ModelWithPgSearch.create!(:title => 'foo', :content => nil)
         results  = ModelWithPgSearch.search_title_and_content('foo')
         results.should == [included]
+      end
+    end
+
+    context "against a date column" do
+      before do
+        ModelWithPgSearch.class_eval do
+          pg_search_scope :search_birthday, :against => [:birthday]
+        end
+      end
+      let(:matching_date) { Date.parse("Jun 6, 1944") }
+      let(:same_date) { Date.parse("Jun 6, 1944") }
+      let(:other_date) { Date.parse("Apr 5, 1944") }
+
+      it "returns rows whose columns contain a matching date" do
+        included = [
+          ModelWithPgSearch.create!(:birthday => matching_date),
+          ModelWithPgSearch.create!(:birthday => same_date)
+        ]
+        excluded = [
+          ModelWithPgSearch.create!(:birthday => other_date)
+        ]
+        results = ModelWithPgSearch.search_birthday(matching_date)
+
+        results.should =~ included
+        excluded.each do |result|
+          results.should_not include(result)
+        end
+      end
+    end
+
+    context "against a datetime column" do
+      before do
+        ModelWithPgSearch.class_eval do
+          pg_search_scope :search_time, :against => [:time]
+        end
+      end
+      let(:matching_time) { Time.parse("Jun 6, 1944 5:35am") }
+      let(:other_time) { Time.parse("Apr 5, 1944, 8:36pm") }
+
+      it "returns rows whose columns contain a matching time" do
+        included = [
+          ModelWithPgSearch.create!(:time => matching_time)
+        ]
+        excluded = [
+          ModelWithPgSearch.create!(:time => other_time)
+        ]
+        results = ModelWithPgSearch.search_time([matching_time])
+
+        results.should =~ included
+        excluded.each do |result|
+          results.should_not include(result)
+        end
       end
     end
 

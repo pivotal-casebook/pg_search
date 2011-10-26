@@ -42,7 +42,12 @@ module PgSearch
     end
 
     def query
-      @options[:query].to_s
+      Array.wrap(@options[:query]).map { |term| transform_query_term(term) }.join(' ')
+    end
+
+    def transform_query_term(term)
+      return term.strftime("%Y%m%d%H%M%S") if term.respond_to?(:strftime)
+      term
     end
 
     def ignore
