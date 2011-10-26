@@ -757,14 +757,77 @@ describe "an ActiveRecord model which includes PgSearch" do
   end
 
   describe ".multisearch" do
-    subject { PgSearch.multisearch(query) }
-    let(:query) { double(:query) }
-    let(:relation) { double(:relation) }
-    before do
-      PgSearch::Document.should_receive(:search).with(query).and_return(relation)
+    with_table "pg_search_documents", {}, &DOCUMENTS_SCHEMA
+
+    describe "delegation to PgSearch::Document.search" do
+      subject { PgSearch.multisearch(query) }
+
+      let(:query) { double(:query) }
+      let(:relation) { double(:relation) }
+      before do
+        PgSearch::Document.should_receive(:search).with(query).and_return(relation)
+      end
+
+      it { should == relation }
     end
 
-    it { should == relation }
+    context "with PgSearch.multisearch_options set to a Hash" do
+      before { PgSearch.stub(:multisearch_options).and_return({:using => :dmetaphone}) }
+      subject { PgSearch.multisearch(query).map(&:searchable) }
+
+      with_model :MultisearchableModel do
+        table do |t|
+          t.string :title
+        end
+        model do
+          include PgSearch
+          multisearchable :against => :title
+        end
+      end
+
+      let!(:soundalike_record) { MultisearchableModel.create!(:title => 'foning') }
+      let(:query) { "Phoning" }
+      it { should include(soundalike_record) }
+    end
+
+    context "with PgSearch.multisearch_options set to a Proc" do
+      subject { PgSearch.multisearch(query, soundalike).map(&:searchable) }
+
+      before do
+        PgSearch.stub(:multisearch_options).and_return do
+          lambda do |query, soundalike|
+            if soundalike
+              {:using => :dmetaphone, :query => query}
+            else
+              {:query => query}
+            end
+          end
+        end
+      end
+
+      with_model :MultisearchableModel do
+        table do |t|
+          t.string :title
+        end
+        model do
+          include PgSearch
+          multisearchable :against => :title
+        end
+      end
+
+      let!(:soundalike_record) { MultisearchableModel.create!(:title => 'foning') }
+      let(:query) { "Phoning" }
+
+      context "with soundalike true" do
+        let(:soundalike) { true }
+        it { should include(soundalike_record) }
+      end
+
+      context "with soundalike false" do
+        let(:soundalike) { false }
+        it { should_not include(soundalike_record) }
+      end
+    end
   end
 
   describe ".disable_multisearch" do
