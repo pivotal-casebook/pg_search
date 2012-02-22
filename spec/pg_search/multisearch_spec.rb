@@ -14,19 +14,85 @@ describe PgSearch::Multisearch do
     end
   end
 
+  let(:model) { MultisearchableModel }
+  let(:connection) { model.connection }
+  let(:documents) { double(:documents) }
+
   describe ".rebuild" do
-    it "should fetch the proper columns from the model" do
+    before do
+      model.multisearchable :against => :title
+    end
+
+    it "should operate inside a transaction" do
+      model.should_receive(:transaction).once()
+
+      PgSearch::Multisearch.rebuild(model)
+    end
+
+    describe "cleaning up search documents for this model" do
+      before do
+        connection.execute <<-SQL
+          INSERT INTO pg_search_documents
+            (searchable_type, searchable_id, content)
+            VALUES
+            ('#{model.name}', 123, 'foo');
+          INSERT INTO pg_search_documents
+            (searchable_type, searchable_id, content)
+            VALUES
+            ('Bar', 123, 'foo');
+        SQL
+        PgSearch::Document.count.should == 2
+      end
+
+      context "when clean_up is not passed" do
+        it "should delete the document for the model" do
+          PgSearch::Multisearch.rebuild(model)
+          PgSearch::Document.count.should == 1
+          PgSearch::Document.first.searchable_type.should == "Bar"
+        end
+      end
+
+      context "when clean_up is true" do
+        let(:clean_up) { true }
+
+        it "should delete the document for the model" do
+          PgSearch::Multisearch.rebuild(model, clean_up)
+          PgSearch::Document.count.should == 1
+          PgSearch::Document.first.searchable_type.should == "Bar"
+        end
+      end
+
+      context "when clean_up is false" do
+        let(:clean_up) { false }
+
+        it "should not delete the document for the model" do
+          PgSearch::Multisearch.rebuild(model, clean_up)
+          PgSearch::Document.count.should == 2
+        end
+      end
+    end
+
+    describe "inserting the new documents" do
+      let!(:new_models) { [] }
+      before do
+        new_models << model.create!(:title => "Foo", :content => "Bar")
+        new_models << model.create!(:title => "Baz", :content => "Bar")
+      end
+
+      it "should create new documents for the two models" do
+        PgSearch::Multisearch.rebuild(model)
+        PgSearch::Document.last(2).map(&:searchable).map(&:title).should =~ new_models.map(&:title)
+      end
     end
   end
 
   describe ".rebuild_sql" do
     context "with one attribute" do
+      before do
+        model.multisearchable :against => [:title]
+      end
+
       it "should generate the proper SQL code" do
-        model = MultisearchableModel
-        connection = model.connection
-
-        model.multisearchable :against => :title
-
         expected_sql = <<-SQL
 INSERT INTO #{PgSearch::Document.quoted_table_name} (searchable_type, searchable_id, content)
   SELECT #{connection.quote(model.name)} AS searchable_type,
@@ -35,19 +101,18 @@ INSERT INTO #{PgSearch::Document.quoted_table_name} (searchable_type, searchable
            coalesce(#{model.quoted_table_name}.title, '')
          ) AS content
   FROM #{model.quoted_table_name}
-SQL
+  SQL
 
-        PgSearch::Multisearch.rebuild_sql(MultisearchableModel).should == expected_sql
+        PgSearch::Multisearch.rebuild_sql(model).should == expected_sql
       end
     end
 
     context "with multiple attributes" do
-      it "should generate the proper SQL code" do
-        model = MultisearchableModel
-        connection = model.connection
-
+      before do
         model.multisearchable :against => [:title, :content]
+      end
 
+      it "should generate the proper SQL code" do
         expected_sql = <<-SQL
 INSERT INTO #{PgSearch::Document.quoted_table_name} (searchable_type, searchable_id, content)
   SELECT #{connection.quote(model.name)} AS searchable_type,
@@ -56,11 +121,10 @@ INSERT INTO #{PgSearch::Document.quoted_table_name} (searchable_type, searchable
            coalesce(#{model.quoted_table_name}.title, '') || ' ' || coalesce(#{model.quoted_table_name}.content, '')
          ) AS content
   FROM #{model.quoted_table_name}
-SQL
+  SQL
 
-        PgSearch::Multisearch.rebuild_sql(MultisearchableModel).should == expected_sql
+        PgSearch::Multisearch.rebuild_sql(model).should == expected_sql
       end
     end
-
   end
 end
