@@ -87,13 +87,14 @@ describe PgSearch::Multisearch do
   end
 
   describe ".rebuild_sql" do
-    context "with one attribute" do
-      before do
-        model.multisearchable :against => [:title]
-      end
+    context "when the model does not implement pg_search_index_data" do
+      context "with one attribute" do
+        before do
+          model.multisearchable :against => [:title]
+        end
 
-      it "should generate the proper SQL code" do
-        expected_sql = <<-SQL
+        it "should generate the proper SQL code" do
+          expected_sql = <<-SQL
 INSERT INTO #{PgSearch::Document.quoted_table_name} (searchable_type, searchable_id, content)
   SELECT #{connection.quote(model.name)} AS searchable_type,
          #{model.quoted_table_name}.id AS searchable_id,
@@ -101,19 +102,19 @@ INSERT INTO #{PgSearch::Document.quoted_table_name} (searchable_type, searchable
            coalesce(#{model.quoted_table_name}.title, '')
          ) AS content
   FROM #{model.quoted_table_name}
-  SQL
+    SQL
 
-        PgSearch::Multisearch.rebuild_sql(model).should == expected_sql
-      end
-    end
-
-    context "with multiple attributes" do
-      before do
-        model.multisearchable :against => [:title, :content]
+          PgSearch::Multisearch.rebuild_sql(model).should == expected_sql
+        end
       end
 
-      it "should generate the proper SQL code" do
-        expected_sql = <<-SQL
+      context "with multiple attributes" do
+        before do
+          model.multisearchable :against => [:title, :content]
+        end
+
+        it "should generate the proper SQL code" do
+          expected_sql = <<-SQL
 INSERT INTO #{PgSearch::Document.quoted_table_name} (searchable_type, searchable_id, content)
   SELECT #{connection.quote(model.name)} AS searchable_type,
          #{model.quoted_table_name}.id AS searchable_id,
@@ -121,7 +122,29 @@ INSERT INTO #{PgSearch::Document.quoted_table_name} (searchable_type, searchable
            coalesce(#{model.quoted_table_name}.title, '') || ' ' || coalesce(#{model.quoted_table_name}.content, '')
          ) AS content
   FROM #{model.quoted_table_name}
-  SQL
+    SQL
+
+          PgSearch::Multisearch.rebuild_sql(model).should == expected_sql
+        end
+      end
+    end
+
+    context "when the model implements pg_search_index_data" do
+      before do
+        class MultisearchableModel
+          def self.pg_search_index_data
+            <<-SQL
+SQL select with joins, etc
+              SQL
+          end
+        end
+      end
+
+      it "should generate the proper SQL code" do
+        expected_sql = <<-SQL
+INSERT INTO #{PgSearch::Document.quoted_table_name} (searchable_type, searchable_id, content)
+SQL select with joins, etc
+    SQL
 
         PgSearch::Multisearch.rebuild_sql(model).should == expected_sql
       end

@@ -1,7 +1,7 @@
 module PgSearch
   module Multisearch
-    REBUILD_SQL_TEMPLATE = <<-SQL
-INSERT INTO :documents_table (searchable_type, searchable_id, content)
+    REBUILD_SQL_INSERT = "INSERT INTO :documents_table (searchable_type, searchable_id, content)"
+    REBUILD_SQL_SELECT_TEMPLATE = <<-SQL
   SELECT :model_name AS searchable_type,
          :model_table.id AS searchable_id,
          (
@@ -19,6 +19,15 @@ SQL
       end
 
       def rebuild_sql(model)
+        "#{REBUILD_SQL_INSERT}\n#{rebuild_sql_select(model)}".gsub(
+          ":documents_table", PgSearch::Document.quoted_table_name
+        )
+      end
+
+      private
+
+      def rebuild_sql_select(model)
+        return model.pg_search_index_data if model.respond_to?(:pg_search_index_data)
         connection = model.connection
 
         columns = Array.wrap(
@@ -29,14 +38,12 @@ SQL
           %Q{coalesce(:model_table.#{column}, '')}
         end.join(" || ' ' || ")
 
-        REBUILD_SQL_TEMPLATE.gsub(
+        REBUILD_SQL_SELECT_TEMPLATE.gsub(
           ":content_expressions", content_expressions
         ).gsub(
           ":model_name", connection.quote(model.name)
         ).gsub(
           ":model_table", model.quoted_table_name
-        ).gsub(
-          ":documents_table", PgSearch::Document.quoted_table_name
         )
       end
     end
