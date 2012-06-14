@@ -1,13 +1,16 @@
 require "bundler/setup"
 require "pg_search"
 
+def postgresql_version
+  @postgresql_version ||= ActiveRecord::Base.connection.send(:postgresql_version)
+end
+
 begin
   ActiveRecord::Base.establish_connection(:adapter  => 'postgresql',
                                           :database => 'pg_search_test',
                                           :username => ('postgres' if ENV["TRAVIS"]),
                                           :min_messages => 'warning')
   connection = ActiveRecord::Base.connection
-  postgresql_version = connection.send(:postgresql_version)
   connection.execute("SELECT 1")
   puts "postgresql_version = #{postgresql_version}"
 rescue PGError => e
